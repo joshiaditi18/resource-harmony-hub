@@ -15,6 +15,7 @@ import type {
   MapLocation,
   Notification,
   PredictionResult,
+  ResourceRequest,
   UserRole,
 } from "./api";
 
@@ -53,6 +54,32 @@ const distributions: Distribution[] = [
   { id: "x3", ngo: "Smile Foundation", itemName: "Khichdi", quantityKg: 30, distributedAt: daysAhead(0), beneficiaries: 70, status: "in_progress" },
 ];
 
+const requests: ResourceRequest[] = [
+  {
+    id: "r1",
+    ngo: "Smile Foundation",
+    itemName: "Grain",
+    quantityKg: 50,
+    beneficiaries: 100,
+    requestedAt: daysAgo(1),
+    neededBy: daysAhead(2),
+    status: "pending",
+    notes: "Weekly community meal service",
+  },
+  {
+    id: "r2",
+    ngo: "Helping Hands",
+    itemName: "Rice + Dal",
+    quantityKg: 60,
+    beneficiaries: 120,
+    requestedAt: daysAgo(3),
+    neededBy: daysAgo(1),
+    status: "fulfilled",
+    fulfilledAt: daysAgo(0),
+    distributionId: "x1",
+  },
+];
+
 const locations: MapLocation[] = [
   { id: "l1", name: "Spice Garden Restaurant", type: "restaurant", lat: 19.076, lng: 72.8777, status: "active" },
   { id: "l2", name: "Hotel Marigold", type: "restaurant", lat: 19.09, lng: 72.86, status: "active" },
@@ -79,7 +106,7 @@ function dashboard(): DashboardStats {
     totalDonations: 1284,
     activeNgos: 23,
     foodWasteReducedKg: 8420,
-    pendingRequests: 12,
+    pendingRequests: requests.filter((request) => request.status === "pending" || request.status === "approved").length,
     flow,
     distributionByCategory: [
       { name: "Grain", value: 38 },
@@ -89,6 +116,12 @@ function dashboard(): DashboardStats {
       { name: "Other", value: 7 },
     ],
     recentActivity: [
+      ...requests.slice(0, 2).map((request) => ({
+        id: request.id,
+        kind: "request",
+        message: `${request.ngo} ${request.status} ${request.quantityKg} kg of ${request.itemName}`,
+        at: request.fulfilledAt ?? request.requestedAt,
+      })),
       { id: "a1", kind: "donation", message: "Spice Garden donated 25 kg cooked rice", at: daysAgo(0) },
       { id: "a2", kind: "distribution", message: "Helping Hands distributed 60 kg to 120 beneficiaries", at: daysAgo(0) },
       { id: "a3", kind: "volunteer", message: "Volunteer Riya signed up", at: daysAgo(1) },
@@ -220,6 +253,73 @@ export async function mockApi<T>(path: string, opts: ApiOptions = {}): Promise<T
     };
     distributions.unshift(d);
     return delay(d as unknown as T);
+  }
+
+  // Resource requests. Fulfillment is intentionally one atomic API action:
+  // the real Flask service should update the request, inventory, distribution,
+  // and notification in the same database transaction.
+  if (p === "/requests" && method === "GET") return delay(requests as unknown as T);
+  if (p === "/requests" && method === "POST") {
+    const request: ResourceRequest = {
+      id: `r${requests.length + 1}`,
+      ngo: String(body.ngo ?? "My organization"),
+      itemName: String(body.itemName ?? "Food"),
+      quantityKg: Number(body.quantityKg ?? 0),
+      beneficiaries: Number(body.beneficiaries ?? 0),
+      requestedAt: now(),
+      neededBy: String(body.neededBy ?? daysAhead(2)),
+      status: "pending",
+      notes: body.notes ? String(body.notes) : undefined,
+    };
+    requests.unshift(request);
+    notifications.unshift({
+      id: `n${notifications.length + 1}`,
+      level: "info",
+      title: "New resource request",
+      message: `${request.ngo} asked for ${request.quantityKg} kg of ${request.itemName}.`,
+      createdAt: now(),
+      read: false,
+      audience: ["admin"],
+    });
+    return delay(request as unknown as T);
+  }
+  const requestId = match(p, /^\/requests\/([^/]+)$/);
+  if (requestId && method === "PATCH") {
+    const request = requests.find((item) => item.id === requestId[1]);
+    if (!request) throw Object.assign(new Error("Request not found"), { status: 404 });
+    const nextStatus = body.status as ResourceRequest["status"];
+    if (!["approved", "fulfilled", "rejected"].includes(nextStatus)) {
+      throw Object.assign(new Error("Invalid request status"), { status: 400 });
+    }
+    if (nextStatus === "fulfilled" && request.status !== "fulfilled") {
+      const matchingInventory = inventory.find((item) =>
+        item.name.toLowerCase().includes(request.itemName.toLowerCase()) ||
+        request.itemName.toLowerCase().includes(item.category),
+      );
+      if (!matchingInventory || matchingInventory.quantityKg < request.quantityKg) {
+        throw Object.assign(new Error("Not enough inventory to fulfill this request"), { status: 409 });
+      }
+      matchingInventory.quantityKg -= request.quantityKg;
+      matchingInventory.status = matchingInventory.quantityKg === 0
+        ? "out"
+        : matchingInventory.quantityKg <= matchingInventory.threshold
+          ? "low"
+          : "ok";
+      const distribution: Distribution = {
+        id: `x${distributions.length + 1}`,
+        ngo: request.ngo,
+        itemName: request.itemName,
+        quantityKg: request.quantityKg,
+        distributedAt: now(),
+        beneficiaries: request.beneficiaries,
+        status: "completed",
+      };
+      distributions.unshift(distribution);
+      request.distributionId = distribution.id;
+      request.fulfilledAt = now();
+    }
+    request.status = nextStatus;
+    return delay(request as unknown as T);
   }
 
   // Analytics

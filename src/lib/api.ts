@@ -107,6 +107,13 @@ export const endpoints = {
   createDistribution: (body: Partial<Distribution>) =>
     api<Distribution>("/distributions", { method: "POST", body }),
 
+  // Requests
+  listRequests: () => api<ResourceRequest[]>("/requests"),
+  createRequest: (body: CreateRequestInput) =>
+    api<ResourceRequest>("/requests", { method: "POST", body }),
+  updateRequest: (id: string, body: UpdateRequestInput) =>
+    api<ResourceRequest>(`/requests/${id}`, { method: "PATCH", body }),
+
   // Analytics / dashboard
   dashboard: () => api<DashboardStats>("/analytics/dashboard"),
   prediction: () => api<PredictionResult>("/analytics/prediction"),
@@ -165,6 +172,35 @@ export interface Distribution {
   distributedAt: string;
   beneficiaries: number;
   status: "completed" | "in_progress" | "scheduled";
+}
+
+export type RequestStatus = "pending" | "approved" | "fulfilled" | "rejected";
+
+export interface ResourceRequest {
+  id: string;
+  ngo: string;
+  itemName: string;
+  quantityKg: number;
+  beneficiaries: number;
+  requestedAt: string;
+  neededBy: string;
+  status: RequestStatus;
+  notes?: string;
+  fulfilledAt?: string;
+  distributionId?: string;
+}
+
+export interface CreateRequestInput {
+  ngo?: string;
+  itemName: string;
+  quantityKg: number;
+  beneficiaries: number;
+  neededBy?: string;
+  notes?: string;
+}
+
+export interface UpdateRequestInput {
+  status: Extract<RequestStatus, "approved" | "fulfilled" | "rejected">;
 }
 
 export interface DashboardStats {
