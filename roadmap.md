@@ -1,0 +1,4 @@
+- [ ] Add request lifecycle types and API endpoints for pending, fulfilled, and rejected requests.
+- [ ] Add an authenticated requests screen with fulfill/reject actions and live cache refreshes.
+- [ ] Update mock data and related screens so fulfilled requests update inventory and distributions immediately.
+- [ ] Verify the app behavior and metadata after the changes.

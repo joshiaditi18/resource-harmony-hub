@@ -12,6 +12,7 @@ import {
   Settings,
   LogOut,
   Sparkles,
+  ClipboardList,
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { useAuth } from "@/lib/auth";
@@ -26,6 +27,7 @@ const NAV: NavItem[] = [
   { to: "/inventory", label: "Inventory", icon: Package },
   { to: "/donations", label: "Donations", icon: HandCoins },
   { to: "/distribution", label: "Distribution", icon: Truck },
+  { to: "/requests", label: "Requests", icon: ClipboardList },
   { to: "/analytics", label: "Analytics", icon: BarChart3 },
   { to: "/prediction", label: "Prediction", icon: Brain },
   { to: "/map", label: "Map Tracking", icon: MapIcon },
